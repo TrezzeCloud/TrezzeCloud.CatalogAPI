@@ -12,6 +12,8 @@ namespace TrezzeCloud.Catalog.Api.Controllers;
 [Route("api/games")]
 public sealed class GameController : ControllerBase
 {
+    // Versioned to avoid reading entries serialized with the domain entity.
+    private const string GamesCacheKey = "games:all:v2";
     private readonly CatalogDbContext _context;
     private readonly ICacheService _cacheService;
 
@@ -24,18 +26,20 @@ public sealed class GameController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken cancellationToken)
     {
-        const string cacheKey = "games:all";
-
-        var cachedGames = await _cacheService.GetAsync<List<Game>>(cacheKey, cancellationToken);
+        var cachedGames = await _cacheService.GetAsync<List<GameCacheDto>>(GamesCacheKey, cancellationToken);
 
         if (cachedGames is not null)
         {
             return Ok(cachedGames);
         }
 
-        var games = await _context.Games.AsNoTracking().ToListAsync(cancellationToken);
+        var games = await _context.Games.AsNoTracking()
+            .Select(game => new GameCacheDto(
+                game.Id, game.Title, game.Description, game.Price, game.Category,
+                game.ImageUrl, game.DisponibilizationDate, game.IsActive, game.CreatedAt))
+            .ToListAsync(cancellationToken);
 
-        await _cacheService.SetAsync(cacheKey, games, TimeSpan.FromMinutes(5), cancellationToken);
+        await _cacheService.SetAsync(GamesCacheKey, games, TimeSpan.FromMinutes(5), cancellationToken);
 
         return Ok(games);
     }
@@ -76,7 +80,7 @@ public sealed class GameController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await _cacheService.RemoveAsync("games:all");
+        await _cacheService.RemoveAsync(GamesCacheKey);
 
         return CreatedAtAction(
             nameof(GetById),
@@ -114,7 +118,7 @@ public sealed class GameController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await _cacheService.RemoveAsync("games:all");
+        await _cacheService.RemoveAsync(GamesCacheKey);
 
         return NoContent();
     }
@@ -133,7 +137,7 @@ public sealed class GameController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        await _cacheService.RemoveAsync("games:all");
+        await _cacheService.RemoveAsync(GamesCacheKey);
 
         return NoContent();
     }

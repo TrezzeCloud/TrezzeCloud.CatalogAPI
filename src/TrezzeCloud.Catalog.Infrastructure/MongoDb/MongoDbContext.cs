@@ -7,9 +7,12 @@ public class MongoDbContext
     public IMongoDatabase Database { get; }
 
     public MongoDbContext(MongoDbSettings settings)
+        : this(new MongoClient(settings.ConnectionString).GetDatabase(settings.DatabaseName))
     {
-        var client = new MongoClient(settings.ConnectionString);
+    }
 
-        Database = client.GetDatabase(settings.DatabaseName);
+    public MongoDbContext(IMongoDatabase database)
+    {
+        Database = database;
     }
 }

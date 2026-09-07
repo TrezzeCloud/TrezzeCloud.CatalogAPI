@@ -10,6 +10,7 @@ using TrezzeCloud.Catalog.Api.Controllers;
 using TrezzeCloud.Catalog.Application.DTOs;
 using TrezzeCloud.Catalog.Domain.Entities;
 using TrezzeCloud.Catalog.Infrastructure.Data;
+using TrezzeCloud.Catalog.Infrastructure.Cache;
 using TrezzeCloud.Contracts.Events;
 
 namespace TrezzeCloud.Catalog.UnitTests;
@@ -20,7 +21,7 @@ public sealed class CatalogFlowTests
     public async Task Should_Create_Game()
     {
         await using var context = CreateDbContext();
-        var sut = new GameController(context);
+        var sut = new GameController(context, Mock.Of<ICacheService>());
 
         var request = new CreateGameRequest(
             "Cyber Drift",
@@ -48,7 +49,7 @@ public sealed class CatalogFlowTests
         await using var context = CreateDbContext();
 
         var publishEndpointMock = new Mock<IPublishEndpoint>();
-        var sut = new StoreController(context, publishEndpointMock.Object)
+        var sut = new StoreController(context, publishEndpointMock.Object, Mock.Of<ICacheService>())
         {
             ControllerContext = new ControllerContext
             {
