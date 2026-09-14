@@ -1,8 +1,9 @@
-﻿using System.Security.Claims;
-using MassTransit;
+﻿using MassTransit;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using TrezzeCloud.Catalog.Infrastructure.Cache;
 using TrezzeCloud.Catalog.Infrastructure.Data;
 using TrezzeCloud.Contracts.Events;
 
@@ -18,7 +19,8 @@ public sealed class StoreController : ControllerBase
 
     public StoreController(
         CatalogDbContext context,
-        IPublishEndpoint publishEndpoint)
+        IPublishEndpoint publishEndpoint,
+        ICacheService cacheService)
     {
         _context = context;
         _publishEndpoint = publishEndpoint;
