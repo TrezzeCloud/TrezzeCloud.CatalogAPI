@@ -36,14 +36,14 @@ class Proxy(http.server.BaseHTTPRequestHandler):
                 size = int(chunk_header.split(b";", 1)[0].strip(), 16)
                 if size == 0:
                     # Consume optional trailers through the terminating empty line.
-                    while self.rfile.readline(8192) not in (b"\\r\\n", b"\\n"):
+                    while self.rfile.readline(8192) not in (b"\r\n", b"\n"):
                         pass
                     break
                 total += size
                 if total > 5 * 1024 * 1024:
                     raise ValueError("Request too large for test proxy")
                 chunks.append(self.rfile.read(size))
-                if self.rfile.read(2) != b"\\r\\n":
+                if self.rfile.read(2) != b"\r\n":
                     raise ValueError("Invalid chunk delimiter")
             return b"".join(chunks)
 
