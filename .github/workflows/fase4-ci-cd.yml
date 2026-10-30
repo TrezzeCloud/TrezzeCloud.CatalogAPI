@@ -23,6 +23,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Impedir credenciais em appsettings
+        run: python3 scripts/check-appsettings-secrets.py
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -36,6 +39,15 @@ jobs:
 
       - name: Docker build
         run: docker build --platform linux/amd64 --file Dockerfile --tag trezzecloud-catalog-api-ci:${{ github.sha }} .
+
+      - name: Scan de vulnerabilidades na imagem Docker (informativo)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: 'trezzecloud-catalog-api-ci:${{ github.sha }}'
+          format: 'table'
+          exit-code: '0'
+          severity: 'HIGH,CRITICAL'
+          vuln-type: 'os,library'
 
   search_integration:
     # Executa contra um Elasticsearch efemero no runner, sem Azure e sem Elastic Cloud.
@@ -112,7 +124,7 @@ jobs:
 
   publish_deploy:
     if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    needs: validate
+    needs: [validate, search_integration]
     runs-on: ubuntu-latest
     environment: azure-demo
     permissions:

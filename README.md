@@ -101,6 +101,22 @@ Corpo para criar uma avaliação (nota inteira entre 1 e 5):
 
 O ID do usuário vem do token, não do corpo. Os endpoints de avaliações atualmente não verificam a existência do jogo no SQL Server. Não há endpoints HTTP de atualização ou exclusão de avaliações.
 
+## Segurança e segredos no desenvolvimento
+
+Nenhuma senha, JWT secret ou string de conexão real deve ser versionada em `appsettings*.json`. O projeto inclui `UserSecretsId` no `.csproj`, permitindo armazenar segredos em `dotnet user-secrets` quando `ASPNETCORE_ENVIRONMENT=Development`.
+
+Configure em `src/TrezzeCloud.Catalog.Api` os valores de `ConnectionStrings:CatalogDatabase`, `MongoDb:ConnectionString`, `Redis:ConnectionString`, `Jwt:SecretKey`, `RabbitMq:Username` e `RabbitMq:Password` pelo **Gerenciar Segredos do Usuário** do Visual Studio ou `dotnet user-secrets set`. O `Jwt:SecretKey` deve ser o **mesmo da UsersAPI** para autenticação compartilhada. Os demais hosts, por exemplo `localhost`, podem permanecer nos arquivos sem senha.
+
+Para listar as chaves locais (atenção: o comando mostra os valores):
+
+```powershell
+dotnet user-secrets list --project src/TrezzeCloud.Catalog.Api
+```
+
+Não compartilhe a saída desse comando. User Secrets é um mecanismo de desenvolvimento e **não criptografa** os segredos. No AKS, mantenha os Secrets Kubernetes já criados; esta alteração não os modifica.
+
+O CI verifica com `scripts/check-appsettings-secrets.py` se os arquivos `appsettings*.json` contêm valores sensíveis e executa um scan Trivy informativo da imagem Docker. Chaves ou senhas já publicadas em commits antigos não são removidas do histórico; avalie sua rotação se tiverem sido utilizadas fora de ambientes de teste.
+
 ## Executar e validar localmente
 
 Requer SDK .NET 10. Para executar a API, disponibilize SQL Server, MongoDB, Redis e RabbitMQ e configure as variáveis acima. Execute na raiz deste repositório:
