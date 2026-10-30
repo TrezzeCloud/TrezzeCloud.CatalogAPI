@@ -22,6 +22,18 @@ O índice é criado automaticamente na primeira operação quando a integração
 
 **Não adicione endpoint ou API key ao código, appsettings de produção ou YAML.** As configurações devem ser injetadas por variáveis de ambiente ou Secrets do Kubernetes. Quando nenhum endpoint ou chave é fornecido, a busca fica desligada; quando só um deles é preenchido, a aplicação informa configuração incompleta. O endpoint deve usar HTTPS. A compatibilidade prevista é com a API REST do Elasticsearch/Elastic Cloud.
 
+## Teste real de Elasticsearch no GitHub Actions (sem custo Azure)
+
+O workflow `.github/workflows/fase4-ci-cd.yml` contém a job `search_integration`, independente de login no Azure, que valida a API REST do **Elasticsearch 9.5.5** em um contêiner temporário do GitHub runner.
+
+O teste `ElasticsearchLiveTests` verifica as funcionalidades realmente executadas no motor de busca: criação de índice, indexação de jogos, correspondência tolerante a erros de digitação (`cybr drft`), ordenação por relevância com título favorecido, atualização de jogo, exclusão lógica de jogo inativo e exclusão de jogos com disponibilidade futura. Ele utiliza o mesmo `ElasticsearchGameSearchService` da CatalogAPI.
+
+Para manter o código de produção seguro, o cliente **continua exigindo URL HTTPS e API key**. Somente no ambiente isolado do teste o runner cria um proxy HTTPS localhost com certificado autossinado; a validação relaxada de certificado fica apenas no teste e **não é utilizada pela aplicação**. Elasticsearch de CI tem autenticação desativada apenas por estar isolado em loopback e ser descartado ao terminar a job. Nunca exponha essa configuração na rede pública.
+
+A job de integração é executada na branch `feature/fase4-elasticsearch`, no PR correspondente e em `main` após a integração. A execução normal dos testes unitários usa mocks e permanece independente de containers.
+
+**Importante:** esse teste comprova a integração do código com um Elasticsearch real, **mas não substitui a exigência do enunciado de usar Elastic Cloud ou outra instância Elasticsearch/OpenSearch gerenciada**. A validação do serviço gerenciado continua pendente para o período em que o grupo ativar o serviço. Para isso, utilize `Elasticsearch__Endpoint` e `Elasticsearch__ApiKey` como Secrets no AKS, conforme `TrezzeCloud.Orchestration/infra/azure/configure-catalog-search.ps1`. Não consuma o trial de um integrante antes de ter os demais requisitos prontos.
+
 ## Variáveis de ambiente
 
 Configure as variáveis antes de iniciar a API. O separador `__` representa seções de configuração do .NET. Os valores abaixo são exemplos locais.
