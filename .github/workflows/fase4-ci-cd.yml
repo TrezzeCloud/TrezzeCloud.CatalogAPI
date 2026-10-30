@@ -50,9 +50,9 @@ jobs:
           vuln-type: 'os,library'
 
   search_integration:
-    # Executa contra um Elasticsearch efemero no runner, sem Azure e sem Elastic Cloud.
-    # O motor gerenciado exigido pela FIAP continua dependendo de um teste final externo.
-    if: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/feature/fase4-elasticsearch' || github.ref == 'refs/heads/main')) || (github.event_name == 'pull_request' && github.head_ref == 'feature/fase4-elasticsearch') }}
+    # Testa Elasticsearch efemero no runner; nao substitui o Elastic Cloud gerenciado.
+    # Deve executar em PRs e em pushes/execucoes manuais da main, pois publish_deploy depende desta job.
+    if: ${{ github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'push' && github.ref == 'refs/heads/feature/fase4-elasticsearch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
