@@ -28,9 +28,9 @@ public sealed class ElasticsearchSearchTests
                 return new HttpResponseMessage(HttpStatusCode.OK);
 
             payload = await request.Content!.ReadAsStringAsync();
-            return Json(HttpStatusCode.OK, $$"""
-            {"hits":{"hits":[{"_score":9.5,"_source":{"id":"{{gameId}}","title":"Cyber Drift","description":"Arcade racing","category":"Racing","price":89.9,"imageUrl":"image","disponibilizationDate":"2026-01-01T00:00:00Z"}}]}}
-            """);
+            return Json(HttpStatusCode.OK, """
+            {"hits":{"hits":[{"_score":9.5,"_source":{"id":"GAME_ID","title":"Cyber Drift","description":"Arcade racing","category":"Racing","price":89.9,"imageUrl":"image","disponibilizationDate":"2026-01-01T00:00:00Z"}}]}}
+            """.Replace("GAME_ID", gameId.ToString()));
         });
 
         var sut = NewService(handler);
