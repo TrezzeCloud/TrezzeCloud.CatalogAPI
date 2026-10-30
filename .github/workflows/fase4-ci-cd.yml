@@ -1,0 +1,116 @@
+name: CatalogAPI - CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - main
+      - 'feature/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trezzecloud-catalog-api-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore TrezzeCloud.CatalogAPI.slnx
+
+      - name: Unit tests
+        run: dotnet test TrezzeCloud.CatalogAPI.slnx --configuration Release --no-restore --logger "trx;LogFileName=trezzecloud-catalog-api.trx"
+
+      - name: Docker build
+        run: docker build --platform linux/amd64 --file Dockerfile --tag trezzecloud-catalog-api-ci:${{ github.sha }} .
+
+  publish_deploy:
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: azure-demo
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ACR_NAME: ${{ vars.ACR_NAME }}
+      AKS_NAME: ${{ vars.AKS_NAME }}
+      AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Azure configuration
+        env:
+          CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in CLIENT_ID TENANT_ID SUBSCRIPTION_ID ACR_NAME AKS_NAME AKS_RESOURCE_GROUP; do
+            if [[ -z "$(printenv "$name")" ]]; then
+              echo "::error::Missing deployment setting: $name"
+              exit 1
+            fi
+          done
+
+      - name: Login to Azure using OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify AKS is running
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(az aks show --resource-group "$AKS_RESOURCE_GROUP" --name "$AKS_NAME" --query powerState.code -o tsv)
+          if [[ "$status" != "Running" ]]; then
+            echo "::error::AKS is $status. Start the cluster before deploying. This workflow does not start resources."
+            exit 1
+          fi
+
+      - name: Build and push image to ACR
+        shell: bash
+        run: |
+          set -euo pipefail
+          az acr login --name "$ACR_NAME"
+          image="$ACR_NAME.azurecr.io/trezzecloud-catalog-api:$GITHUB_SHA"
+          docker build --platform linux/amd64 --file Dockerfile --tag "$image" .
+          docker push "$image"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.36.5'
+
+      - name: Update Kubernetes deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          az aks get-credentials --resource-group "$AKS_RESOURCE_GROUP" --name "$AKS_NAME" --overwrite-existing
+          kubectl -n fcg-fase4 get deployment catalog-api
+          kubectl -n fcg-fase4 set image deployment/catalog-api catalog-api="$IMAGE"
+          if ! kubectl -n fcg-fase4 rollout status deployment/catalog-api --timeout=360s; then
+            kubectl -n fcg-fase4 rollout undo deployment/catalog-api
+            echo "::error::Deployment rollout failed. Rollback requested."
+            exit 1
+          fi
+          kubectl -n fcg-fase4 get deployment catalog-api -o wide
