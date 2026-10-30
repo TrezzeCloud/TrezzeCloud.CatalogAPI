@@ -49,9 +49,82 @@ jobs:
           severity: 'HIGH,CRITICAL'
           vuln-type: 'os,library'
 
+  search_integration:
+    # Executa contra um Elasticsearch efemero no runner, sem Azure e sem Elastic Cloud.
+    # O motor gerenciado exigido pela FIAP continua dependendo de um teste final externo.
+    if: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/feature/fase4-elasticsearch' || github.ref == 'refs/heads/main')) || (github.event_name == 'pull_request' && github.head_ref == 'feature/fase4-elasticsearch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Iniciar Elasticsearch 9.5.5 para o teste
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name fcg-search-ci --memory=2g \
+            -e discovery.type=single-node \
+            -e xpack.security.enabled=false \
+            -e xpack.security.autoconfiguration.enabled=false \
+            -e ES_JAVA_OPTS="-Xms512m -Xmx512m" \
+            -p 127.0.0.1:9200:9200 \
+            docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+
+          for attempt in $(seq 1 90); do
+            if curl --silent --fail http://127.0.0.1:9200/ > /dev/null; then
+              echo "Elasticsearch de CI pronto."
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs fcg-search-ci --tail=100
+          exit 1
+
+      - name: Criar proxy HTTPS isolado para exercitar o cliente real
+        shell: bash
+        run: |
+          set -euo pipefail
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout /tmp/fcg-elastic-ci.key -out /tmp/fcg-elastic-ci.crt \
+            -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost"
+          nohup python3 tests/search-integration/tls_proxy.py \
+            --cert /tmp/fcg-elastic-ci.crt --key /tmp/fcg-elastic-ci.key \
+            > /tmp/fcg-elastic-ci-proxy.log 2>&1 &
+          for attempt in $(seq 1 20); do
+            if curl --silent --insecure --fail https://localhost:9443/ > /dev/null; then
+              echo "Proxy HTTPS de CI pronto."
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/fcg-elastic-ci-proxy.log
+          exit 1
+
+      - name: Validar indexacao, busca fuzzy, relevancia e exclusao logica
+        env:
+          FCG_TEST_ELASTIC_ENDPOINT: https://localhost:9443
+        run: |
+          dotnet test tests/TrezzeCloud.Catalog.UnitTests/TrezzeCloud.Catalog.UnitTests.csproj \
+            --configuration Release \
+            --filter "Category=SearchIntegration" \
+            --logger "trx;LogFileName=elasticsearch-real.trx"
+
+      - name: Diagnostico se falhar
+        if: failure()
+        shell: bash
+        run: |
+          docker logs fcg-search-ci --tail=100 || true
+          cat /tmp/fcg-elastic-ci-proxy.log 2>/dev/null || true
+
   publish_deploy:
     if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    needs: validate
+    needs: [validate, search_integration]
     runs-on: ubuntu-latest
     environment: azure-demo
     permissions:

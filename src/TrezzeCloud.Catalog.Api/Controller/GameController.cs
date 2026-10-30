@@ -1,10 +1,13 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using TrezzeCloud.Catalog.Application.DTOs;
 using TrezzeCloud.Catalog.Domain.Entities;
 using TrezzeCloud.Catalog.Infrastructure.Cache;
 using TrezzeCloud.Catalog.Infrastructure.Data;
+using TrezzeCloud.Catalog.Infrastructure.Search;
 
 namespace TrezzeCloud.Catalog.Api.Controllers;
 
@@ -16,11 +19,19 @@ public sealed class GameController : ControllerBase
     private const string GamesCacheKey = "games:all:v2";
     private readonly CatalogDbContext _context;
     private readonly ICacheService _cacheService;
+    private readonly IGameSearchService? _searchService;
+    private readonly ILogger<GameController> _logger;
 
-    public GameController(CatalogDbContext context, ICacheService cacheService)
+    public GameController(
+        CatalogDbContext context,
+        ICacheService cacheService,
+        IGameSearchService? searchService = null,
+        ILogger<GameController>? logger = null)
     {
         _context = context;
         _cacheService = cacheService;
+        _searchService = searchService;
+        _logger = logger ?? NullLogger<GameController>.Instance;
     }
 
     [HttpGet]
@@ -81,6 +92,7 @@ public sealed class GameController : ControllerBase
         await _context.SaveChangesAsync();
 
         await _cacheService.RemoveAsync(GamesCacheKey);
+        await UpdateSearchIndexAsync(game);
 
         return CreatedAtAction(
             nameof(GetById),
@@ -119,6 +131,7 @@ public sealed class GameController : ControllerBase
         await _context.SaveChangesAsync();
 
         await _cacheService.RemoveAsync(GamesCacheKey);
+        await UpdateSearchIndexAsync(game);
 
         return NoContent();
     }
@@ -138,7 +151,28 @@ public sealed class GameController : ControllerBase
         await _context.SaveChangesAsync();
 
         await _cacheService.RemoveAsync(GamesCacheKey);
+        await UpdateSearchIndexAsync(game);
 
         return NoContent();
+    }
+    private async Task UpdateSearchIndexAsync(Game game)
+    {
+        if (_searchService?.IsEnabled != true)
+            return;
+
+        try
+        {
+            await _searchService.IndexAsync(game);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception,
+                "Nao foi possivel indexar o jogo {GameId}. A reconciliacao periodica tentara novamente.", game.Id);
+        }
+        catch (TaskCanceledException exception)
+        {
+            _logger.LogWarning(exception,
+                "Tempo esgotado ao indexar o jogo {GameId}. A reconciliacao periodica tentara novamente.", game.Id);
+        }
     }
 }
