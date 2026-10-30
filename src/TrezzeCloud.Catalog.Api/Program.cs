@@ -3,6 +3,8 @@ using Microsoft.OpenApi.Models;
 using Scalar.AspNetCore;
 using TrezzeCloud.Catalog.Api.Configurations;
 using TrezzeCloud.Catalog.Infrastructure;
+using TrezzeCloud.Catalog.Infrastructure.Search;
+using TrezzeCloud.Catalog.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,6 +46,9 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddMassTransitConfiguration(builder.Configuration);
 
 builder.Services.AddInfrastructure(builder.Configuration);
+
+builder.Services.AddHttpClient<IGameSearchService, ElasticsearchGameSearchService>();
+builder.Services.AddHostedService<GameSearchReindexWorker>();
 
 builder.Services.AddJwtConfiguration(builder.Configuration);
 
